@@ -478,7 +478,7 @@ JS
 # branch of the queue-retention preflight is pinned without a harness; the tmux case in
 # test_queued_operational_escape_e2e covers the same path in a real Pi.
 test_queued_operational_rows() {
-  local fixture out status
+  local fixture out output_file status
   if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
     echo "skip: node or npm not found for Pi Calm queued-row test"
     return 0
@@ -506,24 +506,27 @@ exec "$FM_OPERATIONAL_INPUT_OWNER" "$@"
 SH
   chmod +x "$fixture/operational-input-probe.sh"
 
-  out=$(cd "$fixture" && \
+  output_file="$fixture/node-output"
+  (cd "$fixture" && \
     FM_OPERATIONAL_INPUT_SCRIPT="$fixture/operational-input-probe.sh" \
     FM_OPERATIONAL_INPUT_OWNER="$OPERATIONAL_INPUT" \
     FM_CLASSIFIER_DOWN="$fixture/classifier-down" \
     PI_PACKAGE_DIR="$PI_PACKAGE_DIR" \
-    node --input-type=module 2>&1 <<'JS'
+    node --input-type=module) >"$output_file" 2>&1 <<'JS'
 import { rmSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 const packageRoot = process.env.PI_PACKAGE_DIR;
-const [{ InteractiveMode }, { initTheme }] = await Promise.all([
+const [{ InteractiveMode }, { initTheme }, { BashExecutionComponent }] = await Promise.all([
   import(pathToFileURL(`${packageRoot}/dist/modes/interactive/interactive-mode.js`).href),
   import(pathToFileURL(`${packageRoot}/dist/modes/interactive/theme/theme.js`).href),
+  import(pathToFileURL(`${packageRoot}/dist/modes/interactive/components/bash-execution.js`).href),
 ]);
 initTheme("dark");
 const layout = await import("./lib/fm-calm-pending-operational-layout.ts");
 const visibility = await import("./lib/fm-calm-visibility.ts");
 const operationalInput = await import("./lib/fm-operational-input.ts");
+const stockUpdatePendingMessagesDisplay = InteractiveMode.prototype.updatePendingMessagesDisplay;
 layout.installCalmPendingOperationalLayout();
 
 const check = (condition, message) => {
@@ -588,6 +591,8 @@ function makeHost(session) {
     // Pi reads its session through runtimeHost, which a session replacement swaps.
     runtimeHost: { session },
     compactionQueuedMessages: [],
+    // Object.create bypasses Pi's constructor; 1.5.1+ redraws this collection too.
+    pendingBashComponents: [],
     statuses: [],
     warnings: [],
     editorText: "",
@@ -616,6 +621,30 @@ const assertNoOperationalText = (text, context) => {
 };
 
 visibility.setCalmPresentation(true);
+
+// Preserve Pi's own pending-bash rendering across a queued-listing redraw. Older Pi
+// draws these components outside this method, so compare with its real stock draw
+// rather than requiring the newer rendering contract from every supported version.
+{
+  const session = makeSession();
+  const host = makeHost(session);
+  const bash = new BashExecutionComponent("printf pending-bash", { requestRender() {} });
+  bash.appendOutput("PENDING_BASH_OUTPUT");
+  bash.setComplete(0, false);
+  check(bash.render(200).map(stripAnsi).join("\n").includes("PENDING_BASH_OUTPUT"), "real bash component did not render its output");
+  host.pendingBashComponents.push(bash);
+  stockUpdatePendingMessagesDisplay.call(host);
+  const stockRows = host.rows();
+  for (const calm of [false, true]) {
+    visibility.setCalmPresentation(calm);
+    host.updatePendingMessagesDisplay();
+    check(host.rows() === stockRows, `Calm ${calm} changed stock pending-bash rendering`);
+  }
+  session.followUp.push(watcherOne);
+  host.updatePendingMessagesDisplay();
+  check(host.rows() === stockRows, "hiding a queued notification changed stock pending-bash rendering");
+  check(host.pendingBashComponents.length === 1 && host.pendingBashComponents[0] === bash, "queued-row redraw mutated Pi's pending bash components");
+}
 
 // 1. Supported session: hidden while queued, kept on Escape, delivered once in a new turn.
 {
@@ -781,8 +810,8 @@ for (const missing of ["_queueSteer", "_queueFollowUp", "sendUserMessage", "wait
   check(toggledHost.rows().includes("QUEUED_MONITOR_ONE"), "turning Calm off did not redraw the hidden row");
 }
 JS
-)
   status=$?
+  out=$(cat "$output_file")
   [ "$status" -eq 0 ] || fail "Pi Calm queued operational rows: $out"
   [ -z "$out" ] || fail "Pi Calm queued-row test printed output: $out"
   pass "Calm hides queued Firstmate rows only on a session that can keep them, keeps hidden ones out of the editor on Escape, delivers them once in order, and leaves unsupported sessions and Calm off stock"
