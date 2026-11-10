@@ -375,8 +375,9 @@ Secondmate launches are exempt because they resolve the secondmate harness and a
 [`configuration.md`](configuration.md#crew-dispatch-profiles-configcrew-dispatchjson) owns model and effort defaults and backend-specific refusal or omission behavior.
 Polytoken composes a concrete model and supported reasoning level through its [adapter contract](../.agents/skills/harness-adapters/references/harness/polytoken.md).
 
-## Optional secondmates
+## Persistent secondmates
 
+The [secondmate handoff skill](../.agents/skills/secondmate-handoff/SKILL.md) owns project-intake routing and its exceptions.
 `data/secondmates.md` records persistent secondmates with natural-language scopes, project clone lists, and home paths.
 A local route points directly at its home, while a remote route adds an SSH alias and remote Firstmate code root so the entire home and all of its child work stay on that host.
 [Remote second-mate placement](remote-secondmates.md#launch-or-recover) leaves the remote home's worker backend selection independent, and every non-doctor primary-to-remote `fm-on` command runs through the remote account's Firstmate-owned job worker rather than its SSH process or a Herdr pane.
