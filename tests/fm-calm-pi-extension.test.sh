@@ -478,7 +478,7 @@ JS
 # branch of the queue-retention preflight is pinned without a harness; the tmux case in
 # test_queued_operational_escape_e2e covers the same path in a real Pi.
 test_queued_operational_rows() {
-  local fixture out status
+  local fixture out output_file status
   if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
     echo "skip: node or npm not found for Pi Calm queued-row test"
     return 0
@@ -506,12 +506,13 @@ exec "$FM_OPERATIONAL_INPUT_OWNER" "$@"
 SH
   chmod +x "$fixture/operational-input-probe.sh"
 
-  out=$(cd "$fixture" && \
+  output_file="$fixture/node-output"
+  (cd "$fixture" && \
     FM_OPERATIONAL_INPUT_SCRIPT="$fixture/operational-input-probe.sh" \
     FM_OPERATIONAL_INPUT_OWNER="$OPERATIONAL_INPUT" \
     FM_CLASSIFIER_DOWN="$fixture/classifier-down" \
     PI_PACKAGE_DIR="$PI_PACKAGE_DIR" \
-    node --input-type=module 2>&1 <<'JS'
+    node --input-type=module) >"$output_file" 2>&1 <<'JS'
 import { rmSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
@@ -809,8 +810,8 @@ for (const missing of ["_queueSteer", "_queueFollowUp", "sendUserMessage", "wait
   check(toggledHost.rows().includes("QUEUED_MONITOR_ONE"), "turning Calm off did not redraw the hidden row");
 }
 JS
-)
   status=$?
+  out=$(cat "$output_file")
   [ "$status" -eq 0 ] || fail "Pi Calm queued operational rows: $out"
   [ -z "$out" ] || fail "Pi Calm queued-row test printed output: $out"
   pass "Calm hides queued Firstmate rows only on a session that can keep them, keeps hidden ones out of the editor on Escape, delivers them once in order, and leaves unsupported sessions and Calm off stock"
