@@ -1,0 +1,39 @@
+#!/usr/bin/env python3
+"""Update an Odoo task GitHub tab from the pull request, branch, and status."""
+import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+from bridge.github_sync import sync_pr_fields
+from bridge.odoo import Json2
+
+
+def env():
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "config.env")
+    out = {}
+    with open(path) as handle:
+        for line in handle:
+            if not line.strip() or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            out[key] = value.strip().strip('"').strip("'")
+    return out
+
+
+def main(argv):
+    replace = "--replace" in argv
+    argv = [arg for arg in argv if arg != "--replace"]
+    if len(argv) != 3 or argv[0] in ("-h", "--help"):
+        print("usage: odoo-task-github-status <odoo-id> <owner/repo> <pr-number> [--replace]",
+              file=sys.stderr)
+        return 2
+    oid, repo, number = int(argv[0]), argv[1], int(argv[2])
+    config = env()
+    key = open(config["ODOO_API_KEY_FILE"]).read().strip()
+    client = Json2(config["ODOO_URL"], config["ODOO_DB"], key)
+    print(sync_pr_fields(client, oid, repo, number, replace=replace))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

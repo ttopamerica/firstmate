@@ -1,0 +1,41 @@
+#!/usr/bin/env python3
+"""Post one Odoo Send Message that replaces a chat prompt. Repeats do not send again."""
+import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+from bridge.odoo import Json2
+from bridge.progress import post_notice
+
+
+def env():
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "config.env")
+    out = {}
+    with open(path) as handle:
+        for line in handle:
+            if not line.strip() or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            out[key] = value.strip().strip('"').strip("'")
+    return out
+
+
+def main(argv):
+    if len(argv) < 3 or argv[0] in ("-h", "--help"):
+        print("usage: odoo-task-notify <odoo-id> <question|review|failure|decision> --text TEXT",
+              file=sys.stderr)
+        return 2
+    oid, kind = int(argv[0]), argv[1]
+    if "--text" not in argv[2:]:
+        print("error: --text is required", file=sys.stderr)
+        return 2
+    text = " ".join(argv[argv.index("--text") + 1:])
+    config = env()
+    key = open(config["ODOO_API_KEY_FILE"]).read().strip()
+    client = Json2(config["ODOO_URL"], config["ODOO_DB"], key)
+    print(post_notice(client, oid, kind, text))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

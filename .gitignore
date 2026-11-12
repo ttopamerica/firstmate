@@ -14,3 +14,7 @@ config/
 .claude/settings.local.json
 
 .tools/
+
+# Private Odoo notification runtime. The commands are tracked; this config and state are not.
+lib/odoo-task-notify/config.env
+lib/odoo-task-notify/state/
